@@ -48,3 +48,49 @@ def test_dashboard_containment_safeguard():
     # Server should protect itself from self-suspension
     assert data["success"] is False
     assert "Aborted" in data["details"]
+
+def test_dashboard_worker_and_containment():
+    # 1. Inspect worker status
+    res = client.get("/api/dashboard/worker")
+    assert res.status_code == 200
+    worker_data = res.json()
+    assert worker_data["worker_pid"] is not None
+    assert worker_data["worker_pid"] > 0
+    assert "memory_rss_bytes" in worker_data
+
+    # 2. Suspend worker
+    suspend_res = client.post("/api/dashboard/worker/containment/suspend")
+    assert suspend_res.status_code == 200
+    s_data = suspend_res.json()
+    assert s_data["success"] is True
+    assert s_data["action"] == "SUSPEND"
+
+    # 3. Resume worker
+    resume_res = client.post("/api/dashboard/worker/containment/resume")
+    assert resume_res.status_code == 200
+    r_data = resume_res.json()
+    assert r_data["success"] is True
+    assert r_data["action"] == "RESUME"
+
+def test_clinical_patients_and_query():
+    # 1. Fetch authorized patients for Dr. Smith
+    res = client.get("/api/clinical/patients?user_id=d1")
+    assert res.status_code == 200
+    data = res.json()
+    assert "patients" in data
+    assert any(p["patient_id"] == "P101" and p["is_authorized"] for p in data["patients"])
+
+    # 2. Authorized query
+    q_res = client.post("/api/clinical/query", json={"user_id": "d1", "prompt": "Show medical history of patient P101"})
+    assert q_res.status_code == 200
+    q_data = q_res.json()
+    assert "request_id" in q_data
+    assert "Type 2 Diabetes" in q_data["response_text"]
+
+    # 3. Incident investigation retrieval
+    req_id = q_data["request_id"]
+    inc_res = client.get(f"/api/incident/{req_id}")
+    assert inc_res.status_code == 200
+    inc_data = inc_res.json()
+    assert inc_data["request"]["request_id"] == req_id
+    assert inc_data["risk_assessment"]["score"] >= 0.0

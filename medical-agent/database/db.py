@@ -1,5 +1,14 @@
 import os
 import sqlite3
+from dotenv import load_dotenv
+
+# Ensure .env is loaded reliably from project root or medical-agent directory
+_root_env = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+_local_env = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+if os.path.exists(_root_env):
+    load_dotenv(_root_env)
+elif os.path.exists(_local_env):
+    load_dotenv(_local_env)
 
 DEFAULT_DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "kernelsentinel.db"))
 

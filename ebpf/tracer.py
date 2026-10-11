@@ -18,6 +18,7 @@ import time
 import signal
 import argparse
 import ctypes
+import socket
 from collections import defaultdict
 from datetime import datetime
 
@@ -147,15 +148,18 @@ SYSCALL_COLOR = {
 # ── Tracer class ──────────────────────────────────────────────
 class KernelSentinelTracer:
 
-    def __init__(self, pid=None, watch_all=False, output_file=None):
-        self.pid         = pid
-        self.watch_all   = watch_all or (pid is None)
-        self.output_file = output_file
-        self.counts      = defaultdict(int)
-        self.events      = []
-        self.start_time  = time.time()
-        self.b           = None
-        self.running     = False
+    def __init__(self, pid=None, watch_all=False, output_file=None, forward_host="127.0.0.1", forward_port=None):
+        self.pid          = pid
+        self.watch_all    = watch_all or (pid is None)
+        self.output_file  = output_file
+        self.forward_host = forward_host
+        self.forward_port = forward_port
+        self._forward_sock = None
+        self.counts       = defaultdict(int)
+        self.events       = []
+        self.start_time   = time.time()
+        self.b            = None
+        self.running      = False
 
     def load(self):
         """Load the BPF program into the kernel."""
@@ -182,6 +186,16 @@ class KernelSentinelTracer:
                 print(f"  ⚠️  Could not attach {sc_name}: {e}")
 
         print(f"  ✅ Kprobes attached: {', '.join(attached)}")
+
+        # Connect forwarder socket if requested
+        if self.forward_port:
+            try:
+                self._forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._forward_sock.connect((self.forward_host, self.forward_port))
+                print(f"  ✅ Forwarding live telemetry to {self.forward_host}:{self.forward_port}")
+            except Exception as e:
+                print(f"  ⚠️  Could not connect forwarder to {self.forward_host}:{self.forward_port}: {e}")
+                self._forward_sock = None
 
         # Set watch_all flag if needed
         if self.watch_all:
@@ -221,12 +235,43 @@ class KernelSentinelTracer:
         print(f"  {ts:>8.3f}s  {ev.pid:<7} {comm:<16} {col}{sc}{RESET}")
 
         # Store
-        self.events.append({
-            "ts":      round(ts, 4),
+        event_dict = {
+            "ts":      round(time.time(), 4),
             "pid":     ev.pid,
+            "tgid":    ev.tgid,
+            "ts_ns":   ev.ts_ns,
             "comm":    comm,
             "syscall": sc,
-        })
+            "provenance": "kernel_ebpf"
+        }
+        self.events.append(event_dict)
+
+        # Forward over localhost TCP if connected
+        if self._forward_sock:
+            type_map = {
+                "execve": "exec",
+                "openat": "open",
+                "connect": "connect",
+                "read": "read",
+                "write": "write",
+                "fork": "fork",
+                "socket": "socket"
+            }
+            forward_payload = {
+                "type": type_map.get(sc, sc),
+                "syscall": sc,
+                "pid": ev.pid,
+                "tgid": ev.tgid,
+                "ts_ns": ev.ts_ns,
+                "ts": round(time.time(), 4),
+                "comm": comm,
+                "provenance": "kernel_ebpf"
+            }
+            try:
+                raw_frame = json.dumps(forward_payload) + "\n"
+                self._forward_sock.sendall(raw_frame.encode("utf-8"))
+            except Exception:
+                self._forward_sock = None
 
     def poll(self, duration=None):
         """Poll ring buffer. Runs until Ctrl+C or duration expires."""
@@ -244,6 +289,12 @@ class KernelSentinelTracer:
 
     def stop(self):
         self.running = False
+        if self._forward_sock:
+            try:
+                self._forward_sock.close()
+            except Exception:
+                pass
+            self._forward_sock = None
 
     def get_counts(self) -> dict:
         """Return final syscall counts."""
@@ -284,12 +335,16 @@ class KernelSentinelTracer:
 def main():
     parser = argparse.ArgumentParser(
         description="KernelSentinel eBPF Syscall Tracer")
-    parser.add_argument("--pid",    type=int, help="Monitor specific PID")
-    parser.add_argument("--all",    action="store_true", help="Monitor all processes")
-    parser.add_argument("--output", type=str, help="Save trace to JSON file")
-    parser.add_argument("--duration", type=int, default=0,
+    parser.add_argument("--pid",          type=int, help="Monitor specific PID")
+    parser.add_argument("--all",          action="store_true", help="Monitor all processes")
+    parser.add_argument("--output",       type=str, help="Save trace to JSON file")
+    parser.add_argument("--duration",     type=int, default=0,
                         help="Stop after N seconds (0=forever)")
-    parser.add_argument("--test",   action="store_true",
+    parser.add_argument("--forward-port", type=int, default=None,
+                        help="Forward telemetry events over localhost TCP to the specified port (e.g. 9090)")
+    parser.add_argument("--forward-host", type=str, default="127.0.0.1",
+                        help="Host for telemetry forwarding (default: 127.0.0.1)")
+    parser.add_argument("--test",         action="store_true",
                         help="Verify eBPF setup and exit")
     args = parser.parse_args()
 
@@ -307,6 +362,8 @@ def main():
         pid=args.pid,
         watch_all=args.all or (not args.pid),
         output_file=args.output,
+        forward_host=args.forward_host,
+        forward_port=args.forward_port,
     )
     tracer.load()
 

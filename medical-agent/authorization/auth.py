@@ -17,6 +17,9 @@ def get_user(user_id: str):
         conn.close()
 
 def check_patient_access(user_id: str, patient_id: str) -> tuple[bool, str]:
+    if not patient_id or not isinstance(patient_id, str) or not patient_id.strip():
+        return False, "Access Denied: Missing or invalid patient identifier."
+
     user = get_user(user_id)
     if not user:
         return False, f"User '{user_id}' not found in authorization system."

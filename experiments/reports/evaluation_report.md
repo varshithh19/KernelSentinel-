@@ -1,7 +1,7 @@
 # KernelSentinel: Experimental Evaluation Report
 
-**Generated:** 20261011_131735  
-**Total Experimental Runs:** 25  
+**Generated:** 20261011_205417
+**Total Experimental Runs:** 25
 
 ---
 
@@ -15,8 +15,8 @@ KernelSentinel was evaluated against a suite of controlled benchmark workloads c
 | **Precision** | **100.0%** | >= 90% | High Confidence |
 | **False Positive Rate** | **0.0%** | <= 5% | Low False Alarm |
 | **Overall Accuracy** | **100.0%** | >= 90% | Validated |
-| **Average End-to-End Latency**| **37.73 ms** | < 250 ms | Low Overhead |
-| **Agent Resident Memory (RSS)**| **42.29 MB** | < 120 MB | Minimal Footprint |
+| **Average End-to-End Latency**| **317.53 ms** | < 250 ms | Low Overhead |
+| **Agent Resident Memory (RSS)**| **44.39 MB** | < 120 MB | Minimal Footprint |
 
 ---
 

@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+from typing import Tuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -130,3 +131,31 @@ def tool_list_authorized_patients(user_id: str, request_id: str) -> str:
         return "You currently have no authorized patient record assignments."
     formatted = [f"- {p['patient_id']}: {p['name']} (DOB: {p['dob']}, Gender: {p['gender']})" for p in patients]
     return "Authorized Patient Records:\n" + "\n".join(formatted)
+
+ALLOWED_TOOLS = {
+    "get_patient_history": get_patient_history,
+    "get_patient_allergies": get_patient_allergies,
+    "get_patient_labs": get_patient_labs,
+    "get_untrusted_patient_note": get_untrusted_patient_note,
+    "list_authorized_patients": tool_list_authorized_patients,
+}
+
+def execute_medical_tool(tool_name: str, user_id: str, request_id: str, patient_id: str = None) -> Tuple[bool, str]:
+    """
+    Strict server-side tool execution gateway.
+    Rejects any unapproved tool names, shell injection attempts, or arbitrary executions.
+    """
+    tool_func = ALLOWED_TOOLS.get(tool_name)
+    if not tool_func:
+        _log_tool_invocation(request_id, tool_name or "unknown", patient_id, "denied", "Tool name not in approved security allowlist")
+        _log_security_event(request_id, "UNAUTHORIZED_TOOL_ATTEMPT", "HIGH", f"Attempted to invoke disallowed or unknown tool '{tool_name}'")
+        return False, f"[SECURITY ERROR] Tool '{tool_name}' is not in the approved clinical tool allowlist."
+
+    if tool_name == "list_authorized_patients":
+        return True, tool_func(user_id, request_id)
+    else:
+        if not patient_id or not str(patient_id).strip():
+            _log_tool_invocation(request_id, tool_name, str(patient_id), "denied", "Missing or empty target patient identifier")
+            _log_security_event(request_id, "MALFORMED_TOOL_ARGUMENT", "MEDIUM", f"Tool '{tool_name}' invoked without valid target patient identifier")
+            return False, f"[SECURITY ERROR] Tool '{tool_name}' requires a valid target patient identifier."
+        return True, tool_func(user_id, str(patient_id).strip(), request_id)

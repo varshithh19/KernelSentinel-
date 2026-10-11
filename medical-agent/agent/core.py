@@ -18,6 +18,7 @@ class AgentResponse(BaseModel):
     pid: int
     classification: PromptClassification
     model_mode: str
+    configured_model_mode: str = "LOCAL_TEST_MODE"
     response_text: str
     tool_calls: list[dict]
     security_events: list[dict]
@@ -48,8 +49,13 @@ def process_agent_query(user_id: str, prompt_text: str) -> AgentResponse:
     finally:
         conn.close()
 
-    adapter, model_mode = get_model_adapter()
-    response_text, tool_calls = adapter.process_query(prompt_text, user_id, request_id)
+    adapter, declared_mode = get_model_adapter()
+    query_result = adapter.process_query(prompt_text, user_id, request_id)
+    if len(query_result) == 3:
+        response_text, tool_calls, actual_mode = query_result
+    else:
+        response_text, tool_calls = query_result
+        actual_mode = declared_mode
 
     conn = get_connection()
     try:
@@ -71,7 +77,8 @@ def process_agent_query(user_id: str, prompt_text: str) -> AgentResponse:
         prompt_text=prompt_text,
         pid=pid,
         classification=classification,
-        model_mode=model_mode,
+        model_mode=actual_mode,
+        configured_model_mode=declared_mode,
         response_text=response_text,
         tool_calls=tool_calls,
         security_events=security_events,
