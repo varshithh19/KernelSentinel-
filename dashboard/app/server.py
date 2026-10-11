@@ -21,8 +21,11 @@ from scenarios.runner import run_scenario
 from detector.response.containment import suspend_process, resume_process
 from detector.features.feature_extractor import extract_features
 from detector.scoring.risk_scorer import compute_risk_score
+from detector.transport.receiver import TelemetryReceiver
 
 START_TIME = time.time()
+TELEMETRY_RECEIVER = None
+TELEMETRY_RECEIVER_ERROR = None
 dashboard_app = FastAPI(
     title="KernelSentinel Dashboard",
     description="Real-Time Security Monitoring & Attack Simulation Console",
@@ -46,8 +49,34 @@ dashboard_app.add_middleware(
 
 @dashboard_app.on_event("startup")
 def on_startup():
+    global TELEMETRY_RECEIVER, TELEMETRY_RECEIVER_ERROR
     init_db()
     seed_db()
+
+    # Keep the telemetry receiver in this process so dashboard routes can read
+    # the same in-memory events that the tracer forwards over localhost TCP.
+    disabled = os.getenv("KERNELSENTINEL_DISABLE_TELEMETRY_RECEIVER", "").strip().lower()
+    if disabled in {"1", "true", "yes"}:
+        TELEMETRY_RECEIVER_ERROR = "Disabled by KERNELSENTINEL_DISABLE_TELEMETRY_RECEIVER"
+        return
+
+    try:
+        telemetry_port = int(os.getenv("KERNELSENTINEL_TELEMETRY_PORT", "9090"))
+        TELEMETRY_RECEIVER = TelemetryReceiver(host="127.0.0.1", port=telemetry_port)
+        TELEMETRY_RECEIVER.start()
+        TELEMETRY_RECEIVER_ERROR = None
+    except (OSError, ValueError) as exc:
+        # Keep the dashboard usable if the port is occupied or configuration is invalid.
+        TELEMETRY_RECEIVER = None
+        TELEMETRY_RECEIVER_ERROR = str(exc)
+
+
+@dashboard_app.on_event("shutdown")
+def on_shutdown():
+    global TELEMETRY_RECEIVER
+    if TELEMETRY_RECEIVER is not None:
+        TELEMETRY_RECEIVER.stop()
+        TELEMETRY_RECEIVER = None
 
 @dashboard_app.get("/", response_class=HTMLResponse)
 def get_dashboard_html():
@@ -77,6 +106,22 @@ def get_dashboard_metrics():
     features = extract_features({"classification": {}}, audit_events, [])
     risk = compute_risk_score(features)
 
+    telemetry_stats = (
+        TELEMETRY_RECEIVER.get_stats()
+        if TELEMETRY_RECEIVER is not None
+        else {
+            "running": False,
+            "host": "127.0.0.1",
+            "port": os.getenv("KERNELSENTINEL_TELEMETRY_PORT", "9090"),
+            "error": TELEMETRY_RECEIVER_ERROR or "Telemetry receiver is not attached",
+        }
+    )
+    kernel_events = (
+        TELEMETRY_RECEIVER.get_events(time_window_sec=300)[-10:]
+        if TELEMETRY_RECEIVER is not None
+        else []
+    )
+
     return {
         "agent": {
             "pid": pid,
@@ -92,7 +137,9 @@ def get_dashboard_metrics():
             "category": risk.category,
             "explanation": risk.explanation
         },
-        "audit_events": audit_events
+        "audit_events": audit_events,
+        "telemetry": telemetry_stats,
+        "kernel_events": kernel_events,
     }
 
 @dashboard_app.post("/api/dashboard/attack/{scenario_id}")

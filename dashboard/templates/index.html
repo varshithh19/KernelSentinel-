@@ -654,6 +654,34 @@
                     </div>
                 </div>
 
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Live Kernel Telemetry</h3>
+                        <span id="telemetry-status-badge" class="badge badge-medium">Checking receiver</span>
+                    </div>
+                    <div class="stat-sub" id="telemetry-receiver-details">
+                        Waiting for the dashboard telemetry receiver.
+                    </div>
+                    <div style="overflow-x:auto; margin-top:12px;">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>PID</th>
+                                    <th>Process</th>
+                                    <th>Event</th>
+                                    <th>Target / Details</th>
+                                    <th>Reported Provenance</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kernel-event-table-body">
+                                <tr><td colspan="6" style="text-align:center; color: var(--text-subtle);">Waiting for kernel events...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="stat-sub" id="telemetry-event-count" style="margin-top:10px;">0 recent events</div>
+                </div>
+
                 <div class="grid-2">
                     <!-- Live Risk Factors Decomposition -->
                     <div class="card">
@@ -1169,6 +1197,12 @@
             }
         }
 
+        function escapeTelemetryText(value) {
+            return String(value ?? '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[ch]));
+        }
+
         // Metrics & SOC Loader
         async function refreshMetrics() {
             try {
@@ -1193,6 +1227,39 @@
                 else if (data.risk.score >= 60) scoreElem.style.color = 'var(--sev-high)';
                 else if (data.risk.score >= 30) scoreElem.style.color = 'var(--sev-medium)';
                 else scoreElem.style.color = 'var(--sev-normal)';
+
+                // Live kernel telemetry (the provenance value is sender-reported, not authenticated).
+                const telemetry = data.telemetry || {};
+                const telemetryBadge = document.getElementById('telemetry-status-badge');
+                const telemetryDetails = document.getElementById('telemetry-receiver-details');
+                const telemetryEvents = data.kernel_events || [];
+                const telemetryRunning = telemetry.running === true;
+                telemetryBadge.className = telemetryRunning ? 'badge badge-normal' : 'badge badge-medium';
+                telemetryBadge.innerText = telemetryRunning ? 'Receiver Online' : 'Receiver Offline';
+                telemetryDetails.innerText = telemetryRunning
+                    ? `Listening on ${telemetry.host || '127.0.0.1'}:${telemetry.port || '9090'} · ${telemetry.events_valid || 0} accepted events total`
+                    : (telemetry.error || 'Telemetry receiver is unavailable.');
+                document.getElementById('telemetry-event-count').innerText =
+                    `${telemetryEvents.length} recent events (last 5 minutes; max 10 shown)`;
+
+                const kernelBody = document.getElementById('kernel-event-table-body');
+                if (telemetryEvents.length === 0) {
+                    kernelBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-subtle);">No kernel events received in the last 5 minutes.</td></tr>';
+                } else {
+                    kernelBody.innerHTML = telemetryEvents.slice().reverse().map(ev => {
+                        const eventTime = Number.isFinite(Number(ev.ts))
+                            ? new Date(Number(ev.ts) * 1000).toLocaleTimeString()
+                            : '—';
+                        return `<tr>
+                            <td>${escapeTelemetryText(eventTime)}</td>
+                            <td>${escapeTelemetryText(ev.pid)}</td>
+                            <td>${escapeTelemetryText(ev.comm || '—')}</td>
+                            <td>${escapeTelemetryText(ev.type || ev.syscall || 'unknown')}</td>
+                            <td>${escapeTelemetryText(ev.filename || ev.details || ev.daddr || '—')}</td>
+                            <td>${escapeTelemetryText(ev.provenance || 'unverified')}</td>
+                        </tr>`;
+                    }).join('');
+                }
 
                 // Counts
                 document.getElementById('soc-total-events').innerText = data.audit_events.length;
