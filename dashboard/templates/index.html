@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KernelSentinel - Security Operations Center</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-green: #4ade80;
+            --accent-yellow: #facc15;
+            --accent-red: #f87171;
+            --accent-purple: #c084fc;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg-color); color: var(--text-primary); padding: 24px; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; }
+        .logo-title h1 { font-size: 24px; font-weight: 700; color: var(--accent-blue); }
+        .logo-title p { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px; }
+        .card-header { font-size: 13px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; }
+        .metric-value { font-size: 26px; font-weight: 700; color: var(--text-primary); }
+        .metric-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .banner-warning { background: rgba(250, 204, 21, 0.15); border: 1px solid var(--accent-yellow); color: var(--accent-yellow); padding: 12px 16px; border-radius: 6px; margin-bottom: 24px; font-size: 14px; display: flex; align-items: center; justify-content: space-between; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border-color); }
+        th { color: var(--text-secondary); }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-green { background: rgba(74, 222, 128, 0.2); color: var(--accent-green); }
+        .badge-yellow { background: rgba(250, 204, 21, 0.2); color: var(--accent-yellow); }
+        .badge-red { background: rgba(248, 113, 113, 0.2); color: var(--accent-red); }
+        .badge-blue { background: rgba(56, 189, 248, 0.2); color: var(--accent-blue); }
+        button { cursor: pointer; padding: 8px 14px; border: none; border-radius: 6px; font-weight: 600; font-size: 13px; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        .btn-blue { background: var(--accent-blue); color: #000; }
+        .btn-red { background: var(--accent-red); color: #fff; }
+        .btn-green { background: var(--accent-green); color: #000; }
+        .btn-group { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+        .action-log { background: #0b1120; border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 220px; overflow-y: auto; color: #cbd5e1; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-title">
+            <h1>🛡️ KernelSentinel</h1>
+            <p>Rust eBPF-Based Runtime Protection of Medical AI Agents Against Prompt Injection Attacks</p>
+        </div>
+        <div>
+            <span class="badge badge-green" id="telemetry-status">System Online</span>
+            <span class="badge badge-blue" id="agent-mode">LOCAL_TEST_MODE</span>
+        </div>
+    </header>
+
+    <div class="banner-warning" id="platform-banner">
+        <span>⚠️ <strong>Operating Environment Note:</strong> Running on Windows host demonstration mode. For Linux kernel eBPF tracepoint attachment, execute inside the VMware Ubuntu target VM. Process telemetry and RBAC enforcement are live.</span>
+    </div>
+
+    <!-- Row 1: Real Process Metrics -->
+    <div class="grid-4">
+        <div class="card">
+            <div class="card-header">Medical Agent PID</div>
+            <div class="metric-value" id="val-pid">--</div>
+            <div class="metric-sub" id="val-procname">Process: python</div>
+        </div>
+        <div class="card">
+            <div class="card-header">Live RSS Memory</div>
+            <div class="metric-value" id="val-rss">-- MB</div>
+            <div class="metric-sub" id="val-rss-bytes">-- Bytes</div>
+        </div>
+        <div class="card">
+            <div class="card-header">CPU Utilization</div>
+            <div class="metric-value" id="val-cpu">-- %</div>
+            <div class="metric-sub" id="val-threads">Threads: --</div>
+        </div>
+        <div class="card">
+            <div class="card-header">Risk Score</div>
+            <div class="metric-value" id="val-risk" style="color: var(--accent-green);">0 / 100</div>
+            <div class="metric-sub" id="val-risk-cat">Status: NORMAL</div>
+        </div>
+    </div>
+
+    <!-- Row 2: Attack Lab & Containment -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-header">Attack Simulation Laboratory</div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Trigger repeatable security benchmark scenarios:</p>
+            <div class="btn-group">
+                <button class="btn-green" onclick="runScenario('scenario_a')">Scenario A (Normal Query)</button>
+                <button class="btn-yellow" onclick="runScenario('scenario_b')">Scenario B (Direct Injection)</button>
+                <button class="btn-red" onclick="runScenario('scenario_c')">Scenario C (MINJA Indirect)</button>
+                <button class="btn-red" onclick="runScenario('scenario_d')">Scenario D (Process Anomaly)</button>
+                <button class="btn-yellow" onclick="runScenario('scenario_e')">Scenario E (Resource Spike)</button>
+            </div>
+            <div style="margin-top: 14px;">
+                <div class="card-header">Scenario Output Log</div>
+                <div class="action-log" id="scenario-log">Ready for attack simulation execution.</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Process Containment & Response</div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Safe & reversible process suspension controller (SIGSTOP/SIGCONT with PID reuse safety):</p>
+            <div class="btn-group">
+                <button class="btn-red" onclick="containProcess('suspend')">Suspend Agent Process</button>
+                <button class="btn-green" onclick="containProcess('resume')">Resume Agent Process</button>
+            </div>
+            <div style="margin-top: 14px;">
+                <div class="card-header">Containment Action Audit</div>
+                <div class="action-log" id="containment-log">System protected processes verified. Ready.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 3: Live Security Audit Feed -->
+    <div class="card">
+        <div class="card-header">Security Audit Events & Kernel Telemetry</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Request ID</th>
+                    <th>Event Type</th>
+                    <th>Severity</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="audit-table-body">
+                <tr><td colspan="5" style="text-align:center; color: var(--text-secondary);">Loading security audit feed...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        async function fetchMetrics() {
+            try {
+                const res = await fetch('/api/dashboard/metrics');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                document.getElementById('val-pid').innerText = data.agent.pid;
+                document.getElementById('val-procname').innerText = `Process: ${data.agent.process_name} (Uptime: ${data.agent.uptime_seconds}s)`;
+                document.getElementById('val-rss').innerText = `${data.agent.memory_rss_mb} MB`;
+                document.getElementById('val-rss-bytes').innerText = `${data.agent.memory_rss_bytes.toLocaleString()} Bytes`;
+                document.getElementById('val-cpu').innerText = `${data.agent.cpu_percent.toFixed(1)} %`;
+                document.getElementById('val-threads').innerText = `Threads: ${data.agent.num_threads}`;
+                
+                const riskElem = document.getElementById('val-risk');
+                riskElem.innerText = `${data.risk.score} / 100`;
+                document.getElementById('val-risk-cat').innerText = `Status: ${data.risk.category}`;
+                
+                if (data.risk.score >= 80) riskElem.style.color = 'var(--accent-red)';
+                else if (data.risk.score >= 60) riskElem.style.color = 'var(--accent-yellow)';
+                else if (data.risk.score >= 30) riskElem.style.color = 'var(--accent-blue)';
+                else riskElem.style.color = 'var(--accent-green)';
+
+                // Render table
+                const tbody = document.getElementById('audit-table-body');
+                if (data.audit_events && data.audit_events.length > 0) {
+                    tbody.innerHTML = data.audit_events.map(ev => {
+                        let badgeClass = 'badge-blue';
+                        if (ev.severity === 'CRITICAL' || ev.severity === 'HIGH') badgeClass = 'badge-red';
+                        else if (ev.severity === 'MEDIUM') badgeClass = 'badge-yellow';
+                        return `<tr>
+                            <td>${ev.timestamp}</td>
+                            <td><code>${ev.request_id || 'N/A'}</code></td>
+                            <td>${ev.event_type}</td>
+                            <td><span class="badge ${badgeClass}">${ev.severity}</span></td>
+                            <td>${ev.details}</td>
+                        </tr>`;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Metrics fetch error:", err);
+            }
+        }
+
+        async function runScenario(scenarioId) {
+            const logElem = document.getElementById('scenario-log');
+            logElem.innerText = `Executing ${scenarioId}...`;
+            try {
+                const res = await fetch(`/api/dashboard/attack/${scenarioId}`, { method: 'POST' });
+                const result = await res.json();
+                logElem.innerText = JSON.stringify(result, null, 2);
+                fetchMetrics();
+            } catch (err) {
+                logElem.innerText = `Error executing scenario: ${err}`;
+            }
+        }
+
+        async function containProcess(action) {
+            const logElem = document.getElementById('containment-log');
+            logElem.innerText = `Executing containment ${action}...`;
+            try {
+                const res = await fetch(`/api/dashboard/containment/${action}`, { method: 'POST' });
+                const result = await res.json();
+                logElem.innerText = JSON.stringify(result, null, 2);
+            } catch (err) {
+                logElem.innerText = `Error: ${err}`;
+            }
+        }
+
+        setInterval(fetchMetrics, 3000);
+        fetchMetrics();
+    </script>
+</body>
+</html>

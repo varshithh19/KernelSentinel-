@@ -1,0 +1,25 @@
+# Environment and local configs
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+*.sqlite
+*.db
+
+# Build artifacts
+ebpf/rust-monitor/target/
+ebpf/c-collector/build/
+*.o
+*.so
+*.exe
+*.dll
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Logs and outputs
+*.log
+experiments/results/*.json
+experiments/results/*.csv

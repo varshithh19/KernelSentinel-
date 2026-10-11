@@ -1,0 +1,15 @@
+[package]
+name = "kernelsentinel-ebpf"
+version = "0.1.0"
+edition = "2021"
+description = "Rust eBPF Kernel Monitor for KernelSentinel Runtime Protection"
+
+[dependencies]
+
+[lib]
+name = "kernelsentinel_ebpf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kernelsentinel_ebpf"
+path = "src/main.rs"

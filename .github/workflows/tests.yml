@@ -1,0 +1,56 @@
+name: KernelSentinel CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-and-verify:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+
+    - name: Install System Dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential libbpf-dev libelf-dev zlib1g-dev
+
+    - name: Install Python Dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r medical-agent/requirements.txt
+
+    - name: Check Rust eBPF Monitor
+      run: |
+        cd ebpf/rust-monitor
+        cargo check
+        cd ../..
+
+    - name: Build C Collector
+      run: |
+        cd ebpf/c-collector
+        make
+        cd ../..
+
+    - name: Run Pytest Test Suites
+      env:
+        PYTHONPATH: ".:medical-agent:attack-lab"
+      run: |
+        python -m pytest medical-agent/tests/ detector/tests/ dashboard/tests/ -v
+
+    - name: Run Automated Evaluation Experiments
+      env:
+        PYTHONPATH: ".:medical-agent:attack-lab"
+      run: |
+        python experiments/runner.py
